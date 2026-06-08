@@ -120,6 +120,13 @@ export interface SyncQueueItem {
   retryCount: number
 }
 
+export interface SyncBreakdown {
+  checkin: number
+  report: number
+  track: number
+  return_record: number
+}
+
 export interface GroupMessage {
   id: string
   senderId: string

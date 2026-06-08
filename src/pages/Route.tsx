@@ -9,10 +9,16 @@ const difficultyConfig = {
 }
 
 export default function Route() {
-  const { routes, currentTask, claimRoute, checkIn } = useStore()
+  const { routes, currentTask, completedTasks, claimRoute, checkIn } = useStore()
   const [animatingId, setAnimatingId] = useState<string | null>(null)
 
-  const availableRoutes = routes.filter(r => r.status === 'available')
+  const claimedRouteIds = new Set([
+    ...routes.filter(r => r.status === 'claimed').map(r => r.id),
+    ...completedTasks.map(t => t.routeId),
+    ...(currentTask ? [currentTask.routeId] : []),
+  ])
+  const availableRoutes = routes.filter(r => r.status === 'available' && !claimedRouteIds.has(r.id))
+
   const progress = currentTask
     ? Math.round((currentTask.completedCheckpoints / currentTask.totalCheckpoints) * 100)
     : 0
@@ -25,6 +31,8 @@ export default function Route() {
       setAnimatingId(null)
     }, 600)
   }
+
+  const canClaimNew = !currentTask || currentTask.status === 'completed'
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-[#0a1f14] text-gray-100 pb-8">
@@ -83,7 +91,7 @@ export default function Route() {
         </section>
       )}
 
-      {currentTask && (
+      {currentTask && currentTask.status !== 'completed' && (
         <section className="px-4 mb-6">
           <h2 className="font-semibold text-emerald-300 mb-3 flex items-center gap-2">
             <MapPin className="w-4 h-4" />
@@ -131,12 +139,32 @@ export default function Route() {
         </section>
       )}
 
+      {currentTask && currentTask.status === 'completed' && (
+        <section className="px-4 mb-6">
+          <div className="bg-[#132d1f] border border-emerald-700/30 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+              <div>
+                <p className="text-sm font-medium text-emerald-300">任务已完成</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {currentTask.routeName} · {currentTask.completedCheckpoints}/{currentTask.totalCheckpoints} 卡点
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="px-4">
         <h2 className="font-semibold text-emerald-300 mb-3 flex items-center gap-2">
           <Mountain className="w-4 h-4" />
           可领取路线
         </h2>
-        {availableRoutes.length === 0 ? (
+        {!canClaimNew ? (
+          <div className="bg-[#132d1f] border border-[#1e4a33] rounded-xl p-6 text-center">
+            <p className="text-gray-400 text-sm">请先完成当前巡护任务</p>
+          </div>
+        ) : availableRoutes.length === 0 ? (
           <div className="bg-[#132d1f] border border-[#1e4a33] rounded-xl p-6 text-center">
             <p className="text-gray-500 text-sm">暂无可领取路线</p>
           </div>

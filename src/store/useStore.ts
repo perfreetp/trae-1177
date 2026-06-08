@@ -11,6 +11,8 @@ import type {
   GroupMessage,
   DailyStats,
   Checkpoint,
+  PatrolTrack,
+  SyncBreakdown,
 } from '@/utils/types'
 import {
   mockCurrentUser,
@@ -29,6 +31,7 @@ import {
 interface AppStore {
   currentUser: PatrolUser
   currentTask: PatrolTask | null
+  completedTasks: PatrolTask[]
   routes: PatrolRoute[]
   hazardReports: HazardReport[]
   supplyItems: SupplyItem[]
@@ -37,8 +40,10 @@ interface AppStore {
   offlineRegions: OfflineMapRegion[]
   groupMessages: GroupMessage[]
   dailyStats: DailyStats[]
+  patrolTracks: PatrolTrack[]
   onlineStatus: boolean
   pendingSyncCount: number
+  syncBreakdown: SyncBreakdown
   isSyncing: boolean
 
   claimRoute: (routeId: string) => void
@@ -51,11 +56,20 @@ interface AppStore {
   sendMessage: (content: string) => void
   syncOfflineData: () => void
   setOnlineStatus: (status: boolean) => void
+  addPatrolTrack: (track: PatrolTrack) => void
+}
+
+const initialSyncBreakdown: SyncBreakdown = {
+  checkin: 3,
+  report: 2,
+  track: 1,
+  return_record: 1,
 }
 
 export const useStore = create<AppStore>((set, get) => ({
   currentUser: mockCurrentUser,
   currentTask: mockCurrentTask,
+  completedTasks: [],
   routes: mockRoutes,
   hazardReports: mockHazardReports,
   supplyItems: mockSupplyItems,
@@ -64,17 +78,22 @@ export const useStore = create<AppStore>((set, get) => ({
   offlineRegions: mockOfflineRegions,
   groupMessages: mockGroupMessages,
   dailyStats: mockDailyStats,
+  patrolTracks: [],
   onlineStatus: true,
   pendingSyncCount,
+  syncBreakdown: { ...initialSyncBreakdown },
   isSyncing: false,
 
   claimRoute: (routeId: string) => {
-    const route = get().routes.find(r => r.id === routeId)
+    const state = get()
+    const route = state.routes.find(r => r.id === routeId)
     if (!route) return
+    if (route.status !== 'available') return
+
     const newTask: PatrolTask = {
       id: `t${Date.now()}`,
       routeId: route.id,
-      userId: get().currentUser.id,
+      userId: state.currentUser.id,
       routeName: route.name,
       status: 'pending',
       completedCheckpoints: 0,
@@ -82,10 +101,17 @@ export const useStore = create<AppStore>((set, get) => ({
       distance: route.distance,
       checkpoints: route.checkpoints.map(cp => ({ ...cp, checked: false, checkedAt: undefined })),
     }
-    set(state => ({
-      routes: state.routes.map(r => r.id === routeId ? { ...r, status: 'claimed' as const } : r),
-      currentTask: newTask,
-    }))
+
+    set(s => {
+      const updates: Partial<AppStore> = {
+        routes: s.routes.map(r => r.id === routeId ? { ...r, status: 'claimed' as const } : r),
+      }
+      if (s.currentTask && (s.currentTask.status === 'in_progress' || s.currentTask.status === 'completed')) {
+        updates.completedTasks = [...s.completedTasks, { ...s.currentTask }]
+      }
+      updates.currentTask = newTask
+      return updates
+    })
   },
 
   checkIn: (checkpointId: string) => {
@@ -115,10 +141,15 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   submitReport: (report: HazardReport) => {
-    set(state => ({
-      hazardReports: [report, ...state.hazardReports],
-      pendingSyncCount: state.onlineStatus ? state.pendingSyncCount : state.pendingSyncCount + 1,
-    }))
+    set(state => {
+      const newBreakdown = { ...state.syncBreakdown }
+      newBreakdown.report += 1
+      return {
+        hazardReports: [report, ...state.hazardReports],
+        pendingSyncCount: state.pendingSyncCount + 1,
+        syncBreakdown: newBreakdown,
+      }
+    })
   },
 
   claimSupply: (itemId: string, quantity: number) => {
@@ -130,9 +161,15 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   addReturnRecord: (record: ReturnRecord) => {
-    set(state => ({
-      returnRecords: [record, ...state.returnRecords],
-    }))
+    set(state => {
+      const newBreakdown = { ...state.syncBreakdown }
+      newBreakdown.return_record += 1
+      return {
+        returnRecords: [record, ...state.returnRecords],
+        pendingSyncCount: state.pendingSyncCount + 1,
+        syncBreakdown: newBreakdown,
+      }
+    })
   },
 
   downloadMap: (regionId: string) => {
@@ -157,14 +194,28 @@ export const useStore = create<AppStore>((set, get) => ({
     }))
   },
 
+  addPatrolTrack: (track: PatrolTrack) => {
+    set(state => {
+      const newBreakdown = { ...state.syncBreakdown }
+      newBreakdown.track += 1
+      return {
+        patrolTracks: [...state.patrolTracks, track],
+        pendingSyncCount: state.pendingSyncCount + 1,
+        syncBreakdown: newBreakdown,
+      }
+    })
+  },
+
   syncOfflineData: () => {
     set({ isSyncing: true })
     setTimeout(() => {
       set(state => ({
         isSyncing: false,
         pendingSyncCount: 0,
+        syncBreakdown: { checkin: 0, report: 0, track: 0, return_record: 0 },
         hazardReports: state.hazardReports.map(r => ({ ...r, synced: true })),
         returnRecords: state.returnRecords.map(r => ({ ...r, synced: true })),
+        patrolTracks: state.patrolTracks.map(t => ({ ...t, synced: true })),
       }))
     }, 2000)
   },

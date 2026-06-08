@@ -1,20 +1,34 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Wifi, WifiOff, Download, Cloud, CloudOff, Map, HardDrive, Circle, CircleDot, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { useStore } from '@/store/useStore'
-
-const SYNC_TYPES = [
-  { label: '打卡记录', count: 3 },
-  { label: '隐患上报', count: 2 },
-  { label: '巡护轨迹', count: 1 },
-  { label: '劝返记录', count: 1 },
-]
+import type { PatrolTrack } from '@/utils/types'
 
 export default function Offline() {
-  const { onlineStatus, pendingSyncCount, isSyncing, offlineRegions, syncOfflineData, downloadMap } = useStore()
+  const { onlineStatus, pendingSyncCount, syncBreakdown, isSyncing, offlineRegions, syncOfflineData, downloadMap, addPatrolTrack } = useStore()
   const [isRecording, setIsRecording] = useState(false)
   const [recordingDuration, setRecordingDuration] = useState(0)
+  const [recordingDistance, setRecordingDistance] = useState(0)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState(0)
+  const recordingStartRef = useRef<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (isRecording) {
+      timerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1)
+        setRecordingDistance(prev => Math.round((prev + 0.002) * 100) / 100)
+      }, 1000)
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [isRecording])
 
   const totalMapSize = offlineRegions.reduce((sum, r) => sum + r.size, 0)
   const downloadedSize = offlineRegions.filter(r => r.downloaded).reduce((sum, r) => sum + r.size, 0)
@@ -42,8 +56,23 @@ export default function Offline() {
     if (!isRecording) {
       setIsRecording(true)
       setRecordingDuration(0)
+      setRecordingDistance(0)
+      recordingStartRef.current = new Date().toISOString()
     } else {
       setIsRecording(false)
+      if (recordingStartRef.current && recordingDuration > 0) {
+        const track: PatrolTrack = {
+          id: `pt_${Date.now()}`,
+          taskId: 't001',
+          points: [[30.2592, 120.2192], [30.2602, 120.2202], [30.2612, 120.2212]],
+          distance: recordingDistance,
+          startTime: recordingStartRef.current,
+          endTime: new Date().toISOString(),
+          synced: false,
+        }
+        addPatrolTrack(track)
+      }
+      recordingStartRef.current = null
     }
   }
 
@@ -53,6 +82,13 @@ export default function Offline() {
     const s = seconds % 60
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
+
+  const syncTypes = [
+    { label: '打卡记录', count: syncBreakdown.checkin },
+    { label: '隐患上报', count: syncBreakdown.report },
+    { label: '巡护轨迹', count: syncBreakdown.track },
+    { label: '劝返记录', count: syncBreakdown.return_record },
+  ]
 
   return (
     <div className="min-h-screen bg-[#0a1f14] pb-8">
@@ -81,12 +117,13 @@ export default function Offline() {
               {[1, 2, 3, 4].map(i => (
                 <div
                   key={i}
-                  className={`w-1.5 rounded-full transition-all duration-500 ${
-                    onlineStatus
-                      ? i <= 3 ? 'h-' + (4 + i * 3) + ' bg-emerald-400' : 'h-4 bg-emerald-900'
-                      : 'h-' + (4 + i * 3) + ' bg-gray-700'
-                  }`}
-                  style={{ height: onlineStatus ? (i <= 3 ? 6 + i * 5 : 6 + i * 5) : 6 + i * 5 }}
+                  className="w-1.5 rounded-full transition-all duration-500"
+                  style={{
+                    height: 6 + i * 5,
+                    backgroundColor: onlineStatus
+                      ? (i <= 3 ? '#34d399' : '#064e3b')
+                      : '#374151'
+                  }}
                 />
               ))}
             </div>
@@ -114,10 +151,10 @@ export default function Offline() {
             <span className="text-2xl font-bold text-amber-300">{pendingSyncCount}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 mb-4">
-            {SYNC_TYPES.map(t => (
+            {syncTypes.map(t => (
               <div key={t.label} className="bg-[#0a1f14]/60 rounded-lg px-3 py-2 flex items-center justify-between">
                 <span className="text-xs text-gray-300">{t.label}</span>
-                <span className="text-xs font-semibold text-amber-300">{t.count}</span>
+                <span className={`text-xs font-semibold ${t.count > 0 ? 'text-amber-300' : 'text-gray-600'}`}>{t.count}</span>
               </div>
             ))}
           </div>
@@ -220,11 +257,11 @@ export default function Offline() {
           <div className="flex gap-4 mb-4">
             <div className="flex-1 bg-[#0a1f14]/60 rounded-xl p-3 text-center">
               <p className="text-xs text-gray-400 mb-1">距离</p>
-              <p className="text-lg font-bold text-white">{isRecording ? '2.4' : '0.0'} <span className="text-xs text-gray-400">km</span></p>
+              <p className="text-lg font-bold text-white">{isRecording ? recordingDistance.toFixed(1) : '0.0'} <span className="text-xs text-gray-400">km</span></p>
             </div>
             <div className="flex-1 bg-[#0a1f14]/60 rounded-xl p-3 text-center">
               <p className="text-xs text-gray-400 mb-1">时长</p>
-              <p className="text-lg font-bold text-white">{isRecording ? formatDuration(recordingDuration) : '00:00:00'}</p>
+              <p className="text-lg font-bold text-white font-mono">{isRecording ? formatDuration(recordingDuration) : '00:00:00'}</p>
             </div>
           </div>
           <button

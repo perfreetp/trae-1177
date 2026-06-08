@@ -44,9 +44,19 @@ export default function Report() {
   const [severity, setSeverity] = useState<HazardReport['severity']>('medium')
   const [photos, setPhotos] = useState<string[]>([])
   const [isRecording, setIsRecording] = useState(false)
+  const [hasVoiceNote, setHasVoiceNote] = useState(false)
   const [roadBlockReason, setRoadBlockReason] = useState('')
   const [roadBlockEndTime, setRoadBlockEndTime] = useState('')
   const [submitted, setSubmitted] = useState(false)
+
+  const handleStartRecording = () => {
+    setIsRecording(true)
+  }
+
+  const handleStopRecording = () => {
+    setIsRecording(false)
+    setHasVoiceNote(true)
+  }
 
   const handleSubmit = () => {
     if (!selectedType || !description.trim()) return
@@ -57,7 +67,7 @@ export default function Report() {
       latitude: 29.5630 + (Math.random() - 0.5) * 0.01,
       longitude: 106.5516 + (Math.random() - 0.5) * 0.01,
       photos,
-      voiceNotes: [],
+      voiceNotes: hasVoiceNote ? [`voice_${Date.now()}`] : [],
       severity,
       createdAt: new Date().toISOString(),
       synced: false,
@@ -71,6 +81,7 @@ export default function Report() {
       setDescription('')
       setSeverity('medium')
       setPhotos([])
+      setHasVoiceNote(false)
       setRoadBlockReason('')
       setRoadBlockEndTime('')
       setSubmitted(false)
@@ -171,28 +182,46 @@ export default function Report() {
 
             <div className="bg-[#132d1f] rounded-xl border border-[#1e4a33] p-4">
               <label className="text-emerald-300/80 text-xs mb-3 block">语音备注</label>
-              <button
-                onClick={() => setIsRecording(r => !r)}
-                className={`flex items-center gap-3 w-full py-3 rounded-lg border transition-all ${isRecording ? 'bg-red-500/20 border-red-500/40' : 'bg-[#0a1f14] border-[#1e4a33]'}`}
-              >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isRecording ? 'bg-red-500' : 'bg-emerald-600'}`}>
-                  <Mic className="w-5 h-5 text-white" />
-                </div>
-                {isRecording ? (
-                  <div className="flex items-center gap-1 flex-1">
-                    {[...Array(12)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-1 bg-red-400 rounded-full animate-pulse"
-                        style={{ height: `${8 + Math.random() * 16}px`, animationDelay: `${i * 0.1}s` }}
-                      />
-                    ))}
-                    <span className="text-red-300 text-xs ml-2">录音中...</span>
+              {hasVoiceNote && !isRecording ? (
+                <div className="flex items-center gap-3 w-full py-3 rounded-lg border bg-emerald-900/20 border-emerald-500/30">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-600">
+                    <Mic className="w-5 h-5 text-white" />
                   </div>
-                ) : (
-                  <span className="text-emerald-400/60 text-sm">点击开始录音</span>
-                )}
-              </button>
+                  <div className="flex-1">
+                    <span className="text-emerald-300 text-sm">语音备注已录制</span>
+                    <p className="text-emerald-400/50 text-[10px]">将随报告一起提交</p>
+                  </div>
+                  <button
+                    onClick={() => setHasVoiceNote(false)}
+                    className="text-xs text-red-400 px-2 py-1 bg-red-900/30 rounded-lg"
+                  >
+                    重录
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={isRecording ? handleStopRecording : handleStartRecording}
+                  className={`flex items-center gap-3 w-full py-3 rounded-lg border transition-all ${isRecording ? 'bg-red-500/20 border-red-500/40' : 'bg-[#0a1f14] border-[#1e4a33]'}`}
+                >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isRecording ? 'bg-red-500' : 'bg-emerald-600'}`}>
+                    <Mic className="w-5 h-5 text-white" />
+                  </div>
+                  {isRecording ? (
+                    <div className="flex items-center gap-1 flex-1">
+                      {[...Array(12)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-1 bg-red-400 rounded-full animate-pulse"
+                          style={{ height: `${8 + Math.random() * 16}px`, animationDelay: `${i * 0.1}s` }}
+                        />
+                      ))}
+                      <span className="text-red-300 text-xs ml-2">录音中...</span>
+                    </div>
+                  ) : (
+                    <span className="text-emerald-400/60 text-sm">点击开始录音</span>
+                  )}
+                </button>
+              )}
             </div>
 
             {selectedType === 'road_block' && (
@@ -230,9 +259,23 @@ export default function Report() {
                     {TYPE_LABELS[r.type] || r.type}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-emerald-100 text-sm truncate">{r.description}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-emerald-100 text-sm truncate">{r.description}</p>
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`w-2 h-2 rounded-full ${SEVERITY_DOTS[r.severity]}`} />
+                      {r.voiceNotes && r.voiceNotes.length > 0 && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-sky-400">
+                          <Mic className="w-3 h-3" />
+                          语音
+                        </span>
+                      )}
+                      {r.photos && r.photos.length > 0 && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-amber-400">
+                          <Camera className="w-3 h-3" />
+                          {r.photos.length}张
+                        </span>
+                      )}
                       <span className="text-emerald-500/50 text-[10px]">
                         <Clock className="w-3 h-3 inline mr-0.5" />
                         {new Date(r.createdAt).toLocaleDateString('zh-CN')}

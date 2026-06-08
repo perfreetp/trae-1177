@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Phone, MessageCircle, MapPin, User, Radio, AlertOctagon, Send, ChevronRight } from 'lucide-react'
+import { Phone, MessageCircle, MapPin, User, Radio, AlertOctagon, Send, X, PhoneCall, PhoneOff, UserCheck } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { mockTeamMembers } from '@/utils/mockData'
 
@@ -8,6 +8,8 @@ const ROLE_LABELS: Record<string, string> = {
   captain: '巡护队长',
   dispatcher: '值班调度',
 }
+
+type CallState = 'idle' | 'dialing' | 'connected' | 'failed'
 
 function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): string {
   const R = 6371
@@ -30,6 +32,34 @@ export default function Contact() {
     { id: 3, sender: '王大山', time: '09:48', content: '今日天气转阴，注意安全' },
   ])
 
+  const [callState, setCallState] = useState<CallState>('idle')
+  const [callTarget, setCallTarget] = useState<{ name: string; phone: string } | null>(null)
+  const [callTimer, setCallTimer] = useState(0)
+
+  const startCall = (name: string, phone: string) => {
+    setCallTarget({ name, phone })
+    setCallState('dialing')
+    setCallTimer(0)
+    setTimeout(() => {
+      setCallState('connected')
+      const interval = setInterval(() => {
+        setCallTimer(prev => {
+          if (callState === 'idle') {
+            clearInterval(interval)
+            return prev
+          }
+          return prev + 1
+        })
+      }, 1000)
+    }, 2000)
+  }
+
+  const endCall = () => {
+    setCallState('idle')
+    setCallTarget(null)
+    setCallTimer(0)
+  }
+
   const handleSendMessage = () => {
     if (!message.trim()) return
     setMessages(prev => [...prev, { id: Date.now(), sender: '我', time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }), content: message }])
@@ -39,6 +69,12 @@ export default function Contact() {
   const handleSosDown = () => setSosHold(true)
   const handleSosUp = () => {
     if (sosHold) setSosHold(false)
+  }
+
+  const formatCallTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60)
+    const s = seconds % 60
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
 
   return (
@@ -97,7 +133,11 @@ export default function Contact() {
               <button className="w-8 h-8 rounded-full bg-[#1e4a33] flex items-center justify-center active:scale-95 transition-transform">
                 <MessageCircle className="w-4 h-4 text-green-400" />
               </button>
-              <button className="w-8 h-8 rounded-full bg-[#1e4a33] flex items-center justify-center active:scale-95 transition-transform">
+              <button
+                onClick={() => startCall(member.name, member.phone)}
+                disabled={callState !== 'idle'}
+                className="w-8 h-8 rounded-full bg-[#1e4a33] flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40"
+              >
                 <Phone className="w-4 h-4 text-blue-400" />
               </button>
             </div>
@@ -107,7 +147,11 @@ export default function Contact() {
 
       <div className="px-4 mb-4">
         <div className="bg-[#132d1f] border border-[#1e4a33] rounded-xl p-4 flex flex-col items-center">
-          <button className="relative w-20 h-20 rounded-full flex items-center justify-center group active:scale-95 transition-transform">
+          <button
+            onClick={() => startCall('值班室', '0571-8888-0000')}
+            disabled={callState !== 'idle'}
+            className="relative w-20 h-20 rounded-full flex items-center justify-center group active:scale-95 transition-transform disabled:opacity-60"
+          >
             <div className="absolute inset-0 rounded-full border-2 border-red-500/50 animate-[spin_3s_linear_infinite] group-active:border-red-400" style={{ borderTopColor: 'transparent', borderRightColor: 'transparent' }} />
             <div className="absolute inset-1 rounded-full border-2 border-red-600/30 animate-[spin_4s_linear_infinite_reverse]" style={{ borderBottomColor: 'transparent', borderLeftColor: 'transparent' }} />
             <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-600/30 group-active:bg-red-500">
@@ -145,6 +189,46 @@ export default function Contact() {
               <button onClick={() => setShowSosConfirm(false)} className="flex-1 py-2.5 rounded-xl bg-[#1e4a33] text-gray-300 font-medium active:scale-95 transition-transform">取消</button>
               <button onClick={() => setShowSosConfirm(false)} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold active:scale-95 transition-transform">确认求助</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {callState !== 'idle' && callTarget && (
+        <div className="fixed inset-0 bg-[#0a1f14]/95 flex flex-col items-center justify-center z-50 px-8">
+          <div className="flex flex-col items-center">
+            <div className="w-20 h-20 bg-[#1e4a33] rounded-full flex items-center justify-center mb-4">
+              {callState === 'dialing' ? (
+                <PhoneCall className="w-8 h-8 text-emerald-400 animate-pulse" />
+              ) : callState === 'connected' ? (
+                <UserCheck className="w-8 h-8 text-emerald-400" />
+              ) : (
+                <PhoneOff className="w-8 h-8 text-red-400" />
+              )}
+            </div>
+            <h3 className="text-xl font-bold mb-1">{callTarget.name}</h3>
+            <p className="text-sm text-gray-400 mb-2">{callTarget.phone}</p>
+            {callState === 'dialing' && (
+              <div className="flex items-center gap-2 text-emerald-400/70 text-sm">
+                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                正在呼叫...
+              </div>
+            )}
+            {callState === 'connected' && (
+              <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                <span className="w-2 h-2 bg-emerald-400 rounded-full" />
+                通话中 {formatCallTime(callTimer)}
+              </div>
+            )}
+            {callState === 'failed' && (
+              <p className="text-red-400 text-sm">呼叫失败，请重试</p>
+            )}
+            <button
+              onClick={endCall}
+              className="mt-8 w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-600/30 active:scale-95 transition-transform"
+            >
+              <PhoneOff className="w-7 h-7 text-white" />
+            </button>
+            <span className="mt-2 text-xs text-gray-500">挂断</span>
           </div>
         </div>
       )}
