@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wifi, WifiOff, Download, Cloud, CloudOff, Map, HardDrive, Circle, CircleDot, RefreshCw, CheckCircle2 } from 'lucide-react'
+import { Wifi, WifiOff, Download, Cloud, CloudOff, Map, HardDrive, Circle, CircleDot, RefreshCw, CheckCircle2, ChevronDown, ChevronUp, Route } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import type { PatrolTrack } from '@/utils/types'
 
 export default function Offline() {
-  const { onlineStatus, pendingSyncCount, syncBreakdown, isSyncing, offlineRegions, syncOfflineData, downloadMap, addPatrolTrack } = useStore()
+  const { onlineStatus, pendingSyncCount, syncBreakdown, isSyncing, offlineRegions, patrolTracks, syncOfflineData, downloadMap, addPatrolTrack } = useStore()
   const [isRecording, setIsRecording] = useState(false)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const [recordingDistance, setRecordingDistance] = useState(0)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState(0)
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null)
   const recordingStartRef = useRef<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -79,8 +80,26 @@ export default function Offline() {
   const formatDuration = (seconds: number) => {
     const h = Math.floor(seconds / 3600)
     const m = Math.floor((seconds % 3600) / 60)
-    const s = seconds % 60
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    const s = Math.round(seconds % 60)
+    if (h > 0) return `${h}h ${m}m`
+    if (m > 0) return `${m}m ${s}s`
+    return `${s}s`
+  }
+
+  const calcTrackDuration = (track: PatrolTrack) => {
+    const start = new Date(track.startTime).getTime()
+    const end = track.endTime ? new Date(track.endTime).getTime() : Date.now()
+    return Math.max(0, Math.floor((end - start) / 1000))
+  }
+
+  const formatTime = (iso: string) =>
+    new Date(iso).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+  const formatCoord = (point: [number, number]) => {
+    const [lat, lng] = point
+    const latDir = lat >= 0 ? 'N' : 'S'
+    const lngDir = lng >= 0 ? 'E' : 'W'
+    return `${Math.abs(lat).toFixed(4)}°${latDir}, ${Math.abs(lng).toFixed(4)}°${lngDir}`
   }
 
   const syncTypes = [
@@ -261,7 +280,7 @@ export default function Offline() {
             </div>
             <div className="flex-1 bg-[#0a1f14]/60 rounded-xl p-3 text-center">
               <p className="text-xs text-gray-400 mb-1">时长</p>
-              <p className="text-lg font-bold text-white font-mono">{isRecording ? formatDuration(recordingDuration) : '00:00:00'}</p>
+              <p className="text-lg font-bold text-white font-mono">{isRecording ? formatDuration(recordingDuration) : '0s'}</p>
             </div>
           </div>
           <button
@@ -284,6 +303,76 @@ export default function Offline() {
               </>
             )}
           </button>
+        </div>
+
+        <div className="rounded-2xl border border-[#1e4a33] bg-[#132d1f] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Route className="w-5 h-5 text-emerald-400" />
+              <span className="text-white font-semibold">轨迹记录列表</span>
+            </div>
+            <span className="text-xs text-gray-400">{patrolTracks.length} 条</span>
+          </div>
+          {patrolTracks.length === 0 ? (
+            <div className="py-6 text-center text-xs text-gray-500">暂无轨迹记录</div>
+          ) : (
+            <div className="space-y-2">
+              {patrolTracks.map(track => {
+                const isSelected = selectedTrackId === track.id
+                const durationSec = calcTrackDuration(track)
+                return (
+                  <div key={track.id}>
+                    <div
+                      className="bg-[#0a1f14]/60 rounded-xl p-3 cursor-pointer active:scale-[0.99] transition-transform"
+                      onClick={() => setSelectedTrackId(isSelected ? null : track.id)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-white">{formatTime(track.startTime)}</span>
+                        <div className="flex items-center gap-1">
+                          {track.synced ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-xs text-emerald-400">已同步</span>
+                            </>
+                          ) : (
+                            <>
+                              <CloudOff className="w-3.5 h-3.5 text-amber-400" />
+                              <span className="text-xs text-amber-400">待同步</span>
+                            </>
+                          )}
+                          {isSelected ? (
+                            <ChevronUp className="w-4 h-4 text-gray-400 ml-1" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-gray-400 ml-1" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-400">
+                        <span>结束 {track.endTime ? formatTime(track.endTime) : '—'}</span>
+                        <span>|</span>
+                        <span>{formatDuration(durationSec)}</span>
+                        <span>|</span>
+                        <span>{track.distance} km</span>
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div className="bg-[#0a1f14]/80 rounded-b-xl px-3 pb-3 pt-2 mx-2 border-t border-[#1e4a33]/50">
+                        <p className="text-xs text-gray-400 mb-1.5">轨迹点概览</p>
+                        <p className="text-xs text-emerald-300 mb-2">共 {track.points.length} 个轨迹点</p>
+                        <div className="space-y-1">
+                          {track.points.slice(0, 5).map((pt, i) => (
+                            <p key={i} className="text-xs text-gray-300 font-mono">
+                              {formatCoord(pt)}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-[#1e4a33] bg-[#132d1f] p-5">

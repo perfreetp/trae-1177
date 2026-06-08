@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Phone, MessageCircle, MapPin, User, Radio, AlertOctagon, Send, X, PhoneCall, PhoneOff, UserCheck } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Phone, MessageCircle, MapPin, User, Radio, AlertOctagon, Send, PhoneCall, PhoneOff, UserCheck } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { mockTeamMembers } from '@/utils/mockData'
 
@@ -35,23 +35,27 @@ export default function Contact() {
   const [callState, setCallState] = useState<CallState>('idle')
   const [callTarget, setCallTarget] = useState<{ name: string; phone: string } | null>(null)
   const [callTimer, setCallTimer] = useState(0)
+  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (callState === 'connected') {
+      callTimerRef.current = setInterval(() => {
+        setCallTimer(prev => prev + 1)
+      }, 1000)
+    }
+    return () => {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current)
+        callTimerRef.current = null
+      }
+    }
+  }, [callState])
 
   const startCall = (name: string, phone: string) => {
     setCallTarget({ name, phone })
-    setCallState('dialing')
     setCallTimer(0)
-    setTimeout(() => {
-      setCallState('connected')
-      const interval = setInterval(() => {
-        setCallTimer(prev => {
-          if (callState === 'idle') {
-            clearInterval(interval)
-            return prev
-          }
-          return prev + 1
-        })
-      }, 1000)
-    }, 2000)
+    setCallState('dialing')
+    setTimeout(() => setCallState('connected'), 2000)
   }
 
   const endCall = () => {

@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom'
-import { MapPin, AlertTriangle, Phone, Package, Wifi, BarChart3, Clock, Navigation, Cloud, Signal, ChevronRight, ShieldCheck } from 'lucide-react'
+import { MapPin, AlertTriangle, Phone, Package, Wifi, BarChart3, Clock, Navigation, Cloud, Signal, ChevronRight, ShieldCheck, CheckCircle2 } from 'lucide-react'
 import { useStore } from '@/store/useStore'
-import { onlineDuration, todayDistance } from '@/utils/mockData'
 
 const quickActions = [
   { icon: MapPin, label: '打卡', path: '/route', color: 'text-emerald-400' },
@@ -12,23 +11,31 @@ const quickActions = [
   { icon: BarChart3, label: '统计', path: '/stats', color: 'text-rose-400' },
 ]
 
-const statusCards = [
-  { icon: Clock, label: '在线时长', value: onlineDuration, color: 'text-emerald-300' },
-  { icon: Navigation, label: '今日行程', value: todayDistance, color: 'text-sky-300' },
-  { icon: Cloud, label: '天气状况', value: '多云 18°C', color: 'text-amber-300' },
-  { icon: Signal, label: '信号强度', value: '4G', color: 'text-green-300' },
-]
-
 export default function Home() {
   const navigate = useNavigate()
   const emergencyAlerts = useStore((s) => s.emergencyAlerts)
   const currentTask = useStore((s) => s.currentTask)
+  const completedTasks = useStore((s) => s.completedTasks)
+  const patrolTracks = useStore((s) => s.patrolTracks)
+
+  const today = new Date().toISOString().split('T')[0]
+  const todayTrackDistance = patrolTracks
+    .filter(t => t.startTime && t.startTime.startsWith(today))
+    .reduce((sum, t) => sum + t.distance, 0)
+  const todayDistance = Math.round((todayTrackDistance + (currentTask?.status === 'completed' && currentTask.startTime?.startsWith(today) ? currentTask.distance : 0) + 3.2) * 10) / 10
 
   const completedCount = currentTask?.checkpoints?.filter((c: any) => c.checked).length ?? 0
   const totalCount = currentTask?.checkpoints?.length ?? 0
   const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0
   const circumference = 2 * Math.PI * 40
   const strokeDashoffset = circumference - (progress / 100) * circumference
+
+  const statusCards = [
+    { icon: Clock, label: '在线时长', value: '2.5h', color: 'text-emerald-300' },
+    { icon: Navigation, label: '今日行程', value: `${todayDistance}km`, color: 'text-sky-300' },
+    { icon: Cloud, label: '天气状况', value: '多云 18°C', color: 'text-amber-300' },
+    { icon: Signal, label: '信号强度', value: '4G', color: 'text-green-300' },
+  ]
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-[#0a1f14] text-white pb-6">
@@ -105,6 +112,18 @@ export default function Home() {
             </div>
           )}
         </div>
+        {completedTasks.length > 0 && (
+          <button
+            onClick={() => navigate('/stats')}
+            className="mt-2 w-full bg-[#132d1f] border border-[#1e4a33] rounded-xl px-4 py-2.5 flex items-center justify-between hover:bg-[#1e4a33] transition-colors"
+          >
+            <span className="flex items-center gap-2 text-xs text-emerald-300">
+              <CheckCircle2 size={14} className="text-emerald-400" />
+              已完成 {completedTasks.length} 条路线
+            </span>
+            <ChevronRight size={14} className="text-emerald-300/50" />
+          </button>
+        )}
       </section>
 
       <section className="px-4 mb-5">

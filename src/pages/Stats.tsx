@@ -1,19 +1,11 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Navigation, Calendar, Clock, MapPin, Download, TrendingUp, CheckCircle2, AlertTriangle, Users, BarChart3 } from 'lucide-react'
 import { useStore } from '@/store/useStore'
-import { totalDistance, totalPatrolDays, totalCheckpoints, totalReports, totalReturns, todayDistance } from '@/utils/mockData'
+import { mockDailyStats } from '@/utils/mockData'
 
-const weeklyData = [
-  { day: '周一', distance: 5.2 },
-  { day: '周二', distance: 3.8 },
-  { day: '周三', distance: 7.1 },
-  { day: '周四', distance: 2.4 },
-  { day: '周五', distance: 6.3 },
-  { day: '周六', distance: 4.7 },
-  { day: '周日', distance: 3.2 },
-]
+const DAILY_GOAL = 10
 
-const historyRecords = [
+const mockHistory = [
   { id: 1, date: '2026-06-08', route: '北坡主线巡护道', distance: 3.2, duration: '1h 42m', checkpoints: 4 },
   { id: 2, date: '2026-06-07', route: '东坡监测路线', distance: 4.7, duration: '2h 15m', checkpoints: 5 },
   { id: 3, date: '2026-06-06', route: '南坡巡逻线路', distance: 6.3, duration: '2h 50m', checkpoints: 6 },
@@ -23,48 +15,113 @@ const historyRecords = [
   { id: 7, date: '2026-06-02', route: '山顶瞭望线路', distance: 5.2, duration: '2h 30m', checkpoints: 5 },
 ]
 
-const DAILY_GOAL = 10
+function formatDuration(ms: number): string {
+  const totalMin = Math.floor(ms / 60000)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
 
 export default function Stats() {
+  const { currentTask, completedTasks, hazardReports, returnRecords, patrolTracks } = useStore()
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const todayKm = todayDistance ?? 3.2
-  const progress = Math.min((todayKm / DAILY_GOAL) * 100, 100)
-  const maxWeekly = Math.max(...weeklyData.map(d => d.distance))
 
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+
+  const todayKm = useMemo(() => {
+    const trackDist = patrolTracks
+      .filter(t => t.startTime.startsWith(todayStr))
+      .reduce((s, t) => s + t.distance, 0)
+    const taskDist = currentTask?.startTime?.startsWith(todayStr) ? currentTask.distance : 0
+    const rounded = Math.round((trackDist + taskDist) * 10) / 10
+    return rounded > 0 ? rounded : 3.2
+  }, [patrolTracks, currentTask, todayStr])
+
+  const totalDist = useMemo(() => {
+    const completed = completedTasks.reduce((s, t) => s + t.distance, 0)
+    const tracks = patrolTracks.reduce((s, t) => s + t.distance, 0)
+    const current = currentTask?.status === 'completed' ? currentTask.distance : 0
+    return Math.round((52.4 + completed + tracks + current) * 10) / 10
+  }, [completedTasks, patrolTracks, currentTask])
+
+  const checkinCount = useMemo(() => {
+    const completed = completedTasks.reduce((s, t) => s + t.completedCheckpoints, 0)
+    const current = currentTask ? currentTask.completedCheckpoints : 0
+    return 628 + completed + current
+  }, [completedTasks, currentTask])
+
+  const reportCount = hazardReports.length
+
+  const returnCount = useMemo(() => returnRecords.reduce((s, r) => s + r.peopleCount, 0), [returnRecords])
+
+  const patrolDays = useMemo(() => {
+    const hasActivityToday = patrolTracks.some(t => t.startTime.startsWith(todayStr))
+      || currentTask?.startTime?.startsWith(todayStr)
+      || completedTasks.some(t => t.endTime?.startsWith(todayStr))
+    return 156 + (hasActivityToday ? 1 : 0)
+  }, [patrolTracks, currentTask, completedTasks, todayStr])
+
+  const weeklyData = useMemo(() => {
+    const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+    const now = new Date()
+    const result: { day: string; distance: number }[] = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now)
+      d.setDate(d.getDate() - i)
+      const ds = d.toISOString().split('T')[0]
+      const dayName = days[d.getDay()]
+      if (ds === todayStr) {
+        result.push({ day: dayName, distance: todayKm })
+      } else {
+        const stat = mockDailyStats.find(s => s.date === ds)
+        result.push({ day: dayName, distance: stat?.distance ?? 0 })
+      }
+    }
+    return result
+  }, [todayStr, todayKm])
+
+  const allHistory = useMemo(() => {
+    const realRecords = completedTasks.map(t => {
+      const start = t.startTime ? new Date(t.startTime).getTime() : 0
+      const end = t.endTime ? new Date(t.endTime).getTime() : 0
+      return {
+        id: t.id,
+        date: t.endTime ? t.endTime.split('T')[0] : '',
+        route: t.routeName,
+        distance: t.distance,
+        duration: end > start ? formatDuration(end - start) : '--',
+        checkpoints: t.completedCheckpoints,
+      }
+    })
+    return [...realRecords, ...mockHistory]
+  }, [completedTasks])
+
+  const progress = Math.min((todayKm / DAILY_GOAL) * 100, 100)
+  const maxWeekly = Math.max(...weeklyData.map(d => d.distance), 1)
   const circumference = 2 * Math.PI * 54
   const strokeDashoffset = circumference - (progress / 100) * circumference
 
   const handleExport = () => {
     setExportMessage(null)
-
     if (!startDate || !endDate) {
       setExportMessage({ type: 'error', text: '请选择开始日期和结束日期' })
       return
     }
-
     if (new Date(startDate) > new Date(endDate)) {
       setExportMessage({ type: 'error', text: '开始日期不能晚于结束日期' })
       return
     }
-
-    const filtered = historyRecords.filter(r => {
-      return r.date >= startDate && r.date <= endDate
-    })
-
+    const filtered = allHistory.filter(r => r.date >= startDate && r.date <= endDate)
     if (filtered.length === 0) {
       setExportMessage({ type: 'error', text: '所选日期范围内没有巡护记录' })
       return
     }
-
     const BOM = '\uFEFF'
     const header = '日期,路线,里程(km),时长,打卡点数'
-    const rows = filtered.map(r =>
-      `${r.date},${r.route},${r.distance},${r.duration},${r.checkpoints}`
-    )
+    const rows = filtered.map(r => `${r.date},${r.route},${r.distance},${r.duration},${r.checkpoints}`)
     const csvContent = BOM + header + '\n' + rows.join('\n')
-
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -74,7 +131,6 @@ export default function Stats() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-
     setExportMessage({ type: 'success', text: `成功导出 ${filtered.length} 条记录` })
     setTimeout(() => setExportMessage(null), 3000)
   }
@@ -125,17 +181,17 @@ export default function Stats() {
                 <TrendingUp size={12} />
                 <span>累计里程</span>
               </div>
-              <p className="text-2xl font-bold">{totalDistance} <span className="text-sm font-normal text-white/50">km</span></p>
+              <p className="text-2xl font-bold">{totalDist} <span className="text-sm font-normal text-white/50">km</span></p>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           {[
-            { icon: Calendar, label: '巡护天数', value: `${totalPatrolDays}天`, color: 'text-emerald-400' },
-            { icon: CheckCircle2, label: '打卡次数', value: `${totalCheckpoints}次`, color: 'text-teal-400' },
-            { icon: AlertTriangle, label: '上报隐患', value: `${totalReports}次`, color: 'text-amber-400' },
-            { icon: Users, label: '劝返人数', value: `${totalReturns}人`, color: 'text-sky-400' },
+            { icon: Calendar, label: '巡护天数', value: `${patrolDays}天`, color: 'text-emerald-400' },
+            { icon: CheckCircle2, label: '打卡次数', value: `${checkinCount}次`, color: 'text-teal-400' },
+            { icon: AlertTriangle, label: '上报隐患', value: `${reportCount}次`, color: 'text-amber-400' },
+            { icon: Users, label: '劝返人数', value: `${returnCount}人`, color: 'text-sky-400' },
           ].map(({ icon: Icon, label, value, color }) => (
             <div key={label} className="bg-[#132d1f] border border-[#1e4a33] rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -209,11 +265,7 @@ export default function Stats() {
                 ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/30'
                 : 'bg-red-900/40 text-red-300 border border-red-700/30'
             }`}>
-              {exportMessage.type === 'success' ? (
-                <CheckCircle2 size={14} />
-              ) : (
-                <AlertTriangle size={14} />
-              )}
+              {exportMessage.type === 'success' ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
               {exportMessage.text}
             </div>
           )}
@@ -225,9 +277,9 @@ export default function Stats() {
             巡护记录
           </h2>
           <div className="space-y-3">
-            {historyRecords.map((record, idx) => (
+            {allHistory.map((record, idx) => (
               <div key={record.id} className="bg-[#132d1f] border border-[#1e4a33] rounded-xl p-4 relative">
-                {idx < historyRecords.length - 1 && (
+                {idx < allHistory.length - 1 && (
                   <div className="absolute left-[30px] bottom-0 translate-y-full w-[2px] h-3 bg-[#1e4a33]" />
                 )}
                 <div className="flex items-start justify-between">

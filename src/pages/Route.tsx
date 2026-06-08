@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapPin, Clock, Mountain, CheckCircle2, Circle, ChevronRight, Navigation, AlertCircle } from 'lucide-react'
+import { MapPin, Clock, Mountain, CheckCircle2, Circle, ChevronRight, ChevronDown, ChevronUp, Navigation, AlertCircle, History } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 
 const difficultyConfig = {
@@ -11,6 +11,7 @@ const difficultyConfig = {
 export default function Route() {
   const { routes, currentTask, completedTasks, claimRoute, checkIn } = useStore()
   const [animatingId, setAnimatingId] = useState<string | null>(null)
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
   const claimedRouteIds = new Set([
     ...routes.filter(r => r.status === 'claimed').map(r => r.id),
@@ -151,6 +152,66 @@ export default function Route() {
                 </p>
               </div>
             </div>
+          </div>
+        </section>
+      )}
+
+      {completedTasks.length > 0 && (
+        <section className="px-4 mb-6">
+          <h2 className="font-semibold text-emerald-300 mb-3 flex items-center gap-2">
+            <History className="w-4 h-4" />
+            历史任务
+          </h2>
+          <div className="space-y-3">
+            {completedTasks.map(task => {
+              const isExpanded = expandedTaskId === task.id
+              return (
+                <div key={task.id} className="bg-[#132d1f] border border-[#1e4a33] rounded-xl overflow-hidden">
+                  <div
+                    className="p-4 cursor-pointer"
+                    onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium text-sm">{task.routeName}</h3>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900 text-emerald-300">
+                        已完成
+                      </span>
+                    </div>
+                    {task.endTime && (
+                      <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(task.endTime).toLocaleDateString('zh-CN')} {new Date(task.endTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
+                      <span>巡查进度</span>
+                      <span>{task.completedCheckpoints}/{task.totalCheckpoints} 个卡点</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-[#0a1f14] rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: '100%' }} />
+                    </div>
+                    <div className="flex items-center justify-center mt-2 text-gray-500">
+                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div className="px-4 pb-4 space-y-2 border-t border-[#1e4a33] pt-3">
+                      {task.checkpoints.map(cp => (
+                        <div key={cp.id} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="text-xs text-gray-300 flex-1">{cp.name}</span>
+                          {cp.checkedAt && (
+                            <span className="text-[10px] text-gray-500">
+                              {new Date(cp.checkedAt).toLocaleDateString('zh-CN')} {new Date(cp.checkedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
